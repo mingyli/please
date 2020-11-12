@@ -17,21 +17,18 @@ fn main() -> io::Result<()> {
     let stderr = child.stderr.take().unwrap();
     std::thread::spawn(move || -> io::Result<()> {
         for byte in stdout.bytes() {
-            stdout_sender.send(byte? ).unwrap();
+            stdout_sender.send(byte?).unwrap();
         }
         Ok(())
     });
     std::thread::spawn(move || -> io::Result<()> {
         for byte in stderr.bytes() {
-            stderr_sender.send(byte? ).unwrap();
+            stderr_sender.send(byte?).unwrap();
         }
         Ok(())
     });
 
-    fn forward_output(
-        receiver: mpsc::Receiver<u8>,
-        mut out: &mut dyn Write,
-    ) -> io::Result<()> {
+    fn forward_output(receiver: mpsc::Receiver<u8>, mut out: &mut dyn Write) -> io::Result<()> {
         for byte in receiver {
             out.write_all(&[byte])?;
             if byte as char == '?' {
