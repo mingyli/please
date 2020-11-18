@@ -1,21 +1,14 @@
 use std::io::{self, Read, Write};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
 
-fn proxy_output(sender: mpsc::Sender<u8>, output: &mut dyn Read) -> io::Result<()> {
-    for byte in output.bytes() {
-        sender.send(byte?).unwrap();
-    }
-    Ok(())
-}
-
-fn forward_output(receiver: mpsc::Receiver<u8>, mut out: &mut dyn Write) -> io::Result<()> {
-    for byte in receiver {
-        out.write_all(&[byte])?;
+fn proxy_output(child_output: &mut dyn Read, mut output: &mut dyn Write) -> io::Result<()> {
+    for byte in child_output.bytes() {
+        let byte = byte?;
+        output.write_all(&[byte])?;
         if byte as char == '?' {
-            write!(&mut out, "🥺👉👈")?;
+            write!(&mut output, "🥺👉👈")?;
         }
-        out.flush()?;
+        output.flush()?;
     }
     Ok(())
 }
@@ -29,20 +22,14 @@ fn main() -> io::Result<()> {
         .stderr(Stdio::piped())
         .spawn()?;
 
-    let (stdout_sender, stdout_receiver) = mpsc::channel();
-    let (stderr_sender, stderr_receiver) = mpsc::channel();
-    let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
+    let mut child_stdout = child.stdout.take().unwrap();
+    let mut child_stderr = child.stderr.take().unwrap();
 
-    let proxy_stdout = std::thread::spawn(move || proxy_output(stdout_sender, &mut stdout));
-    let proxy_stderr = std::thread::spawn(move || proxy_output(stderr_sender, &mut stderr));
-    let forward_stdout =
-        std::thread::spawn(move || forward_output(stdout_receiver, &mut io::stdout()));
-    let forward_stderr =
-        std::thread::spawn(move || forward_output(stderr_receiver, &mut io::stderr()));
+    let mut stdout = io::stdout();
+    let mut stderr = io::stderr();
+    let proxy_stdout = std::thread::spawn(move || proxy_output(&mut child_stdout, &mut stdout));
+    let proxy_stderr = std::thread::spawn(move || proxy_output(&mut child_stderr, &mut stderr));
     proxy_stdout.join().unwrap()?;
     proxy_stderr.join().unwrap()?;
-    forward_stdout.join().unwrap()?;
-    forward_stderr.join().unwrap()?;
     Ok(())
 }
